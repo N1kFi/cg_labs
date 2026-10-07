@@ -1,66 +1,76 @@
-# 🌋 Vulkan Starter App
+# Лабораторная работа №1 — основы 3D-графики
 
-## Getting started
+Вариант 11: правильный икосаэдр. Реализация выполнена на C++20 с Vulkan, GLFW и ImGui.
 
-You need C++ compiler, Vulkan SDK and CMake installed before you can build this project.
+## Что реализовано
 
-This project uses C++20 standard and thus requires either of those compilers:
-- GCC 10.X
-- Clang 10
-- Microsoft Visual Studio 2019
+- индексированный правильный икосаэдр: 12 вершин, 20 треугольных граней, 30 рёбер;
+- один общий vertex/index buffer для двух объектов;
+- два независимых object `VkDescriptorSet` и UBO с отдельными model matrix и цветом;
+- `std140`-совместимые структуры `GlobalUniforms` и `ObjectUniforms`;
+- перспективная Vulkan-проекция с depth range `0..1` и Y-инверсией;
+- глубинный тест и back-face culling;
+- процедурный цвет вершины от её локальной позиции; выбранный цвет из `ColorEdit3` умножается на этот цвет;
+- интерактивное управление переносом, поворотом, масштабом, цветом и параметрами траектории;
+- два режима сложной анимации: Lissajous и epicyclic, Play/Pause, скорость, радиус, амплитуда, частота, фаза и Reset;
+- CPU-тесты геометрии, матриц, проекции, топологии и часов анимации.
 
-This is officially tested on *Windows* and *GNU/Linux platforms*, no *macOS* support yet.
-If you have a working macOS solution of this code, consider submitting a PR so others
-can build this example code without a hassle!
+## Зависимости macOS Apple Silicon
 
-<ins>**1. Downloading the repository**</ins>
+Установите Vulkan loader/headers, MoltenVK, validation layers, `glslc`, CMake, Ninja и GLFW. Например, через Homebrew:
 
-Start by cloning the repository with `git clone --depth 1 https://github.com/vladeemerr/vulkan-starter-app`
-
-This repository does not contain any submodules, it utilizes CMake's `FetchContent` feature instead.
-
-<ins>**2. Configuring the project**</ins>
-
-Run either one of the CMake lines to download dependencies and configure the project:
-
-```bash
-cmake --preset debug       # for GNU/Linux (GCC/Clang)
-cmake --preset msvc-debug  # for Windows (Visual Studio 2019)
-cmake --preset mingw-debug # for Windows (MinGW)
+```sh
+brew install vulkan-headers vulkan-loader vulkan-tools \
+  vulkan-validationlayers shaderc glfw ninja
 ```
 
-If you wish to build in `release` mode, change `debug` to `release`.
+Проверка:
 
-If changes are made (added/removed files), or if you want to regenerate project files, rerun the command above.
-
-<ins>**3. Building**</ins>
-
-To build the project, use the line below. You are most likely using `debug` preset, so
-the directory that will eventually contain your build files is named `build-debug`.
-
-Likewise for `release` that directory will be named `build-release`
-
-Run one those commands, depending on which preset you chose:
-
-```bash
-cmake --build build-debug --parallel # for debug
-cmake --build build-release --parallel # for release
+```sh
+which glslc
+which vulkaninfo
+vulkaninfo --summary
 ```
 
-### Running
+`vulkaninfo` должен показывать физическое устройство Apple через MoltenVK и `VK_LAYER_KHRONOS_validation`.
 
-`build-*` directory will contain the executable in one of the subdirectories after successful build.
+## Сборка и запуск
 
-For `msvc-{debug|release}` builds output subdirectory is set to `Debug` or `Release` respectively.
-For other configurations output subdirectory is set to `vulkan-starter-app`.
+Команды выполняются из корня репозитория:
 
-**Make sure your working directory is set to the project root!**
-Project root is where this README file resides. Otherwise, the
-code responsible for loading shaders or other resources from files will fail,
-because relative paths are used.
+```sh
+cmake --preset debug -DBUILD_TESTING=ON
+cmake --build build-debug --parallel
+ctest --test-dir build-debug --output-on-failure
+./build-debug/vulkan-starter-app
+```
 
-### Compiling shaders
+CMake компилирует `shaders/lab.vert` и `shaders/lab.frag` в `build-debug/shaders/*.spv` через `glslc` и передаёт приложению путь к ним через `LAB_SHADER_DIR`.
 
-`CMakeLists.txt` has a build recipe for compiling shader files
-along with an application. Look for a comment in this file to see
-how to compile your shaders.
+Для проверки SPIR-V:
+
+```sh
+spirv-val build-debug/shaders/lab.vert.spv
+spirv-val build-debug/shaders/lab.frag.spv
+```
+
+## Управление
+
+Панель ImGui находится слева:
+
+- **Play/Pause** — запустить или остановить анимацию;
+- **Reset** — сбросить время, позицию и поворот;
+- **Speed** — скорость анимации;
+- **Selected** — выбрать объект A или B;
+- **Tint** — цвет объекта, умножаемый на процедурный цвет вершин;
+- **Translation / Rotation / Scale** — преобразования выбранного объекта;
+- **Trajectory** — Lissajous или epicyclic;
+- **Radius / Amplitude / Frequency / Phase** — параметры траектории.
+
+## Структура
+
+- `source/application.cpp` — Vulkan-ресурсы лабораторной, UBO, descriptor sets, pipeline, ImGui и draw commands;
+- `source/scene_math.hpp` — математика, генерация икосаэдра и анимация;
+- `shaders/lab.vert`, `shaders/lab.frag` — GLSL 450 shaders;
+- `tests/scene_tests.cpp` — автономные CPU-тесты;
+- `source/graphics_internal.cpp` — инфраструктура шаблона: instance, surface, swapchain, render pass, depth, submit/present и ImGui.

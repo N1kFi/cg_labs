@@ -1,7 +1,9 @@
 #include <cstdint>
 #include <climits>
+#include <cstdlib>
 
 #include <iostream>
+#include <string>
 
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
@@ -17,9 +19,22 @@ namespace {
 constexpr int32_t default_window_width = 1280;
 constexpr int32_t default_window_height = 720;
 
-constexpr char default_window_title[] = "Vulkan Starter App";
+constexpr char default_window_title[] = "CG Lab 1 | Icosahedron | Variant 11";
 
 GLFWwindow* glfw_window;
+
+bool parseFrameLimit(int argc, char** argv, int& frames) {
+	for (int i = 1; i < argc; ++i) {
+		if (std::string(argv[i]) == "--frames") {
+			if (i + 1 >= argc) return false;
+			char* end = nullptr;
+			const long value = std::strtol(argv[++i], &end, 10);
+			if (*argv[i] == '\0' || *end != '\0' || value < 1 || value > INT_MAX) return false;
+			frames = static_cast<int>(value);
+		}
+	}
+	return true;
+}
 
 } // namespace
 

@@ -1,3 +1,11 @@
 build-*/
 shaders/*.spv
 imgui.ini
+.DS_Store
+~$*.docx
+
+make_report.py
+report_assets/geometry.png
+report_assets/ui_result.png
+report_assets/verification.png
+report_pdf/png/
