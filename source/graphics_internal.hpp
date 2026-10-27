@@ -32,6 +32,7 @@ struct FrameData {
 
 extern Context context;
 
+std::uint32_t validationErrorCount();
 bool initialize(GLFWwindow* const window);
 void shutdown();
 
@@ -39,5 +40,7 @@ void resize(uint32_t width, uint32_t height);
 
 FrameData prepare();
 void submitAndPresent();
+bool hasFatalError();
+void requestScreenshot(const char* path);
 
 } // namespace graphics::internal

@@ -9,3 +9,6 @@ report_assets/geometry.png
 report_assets/ui_result.png
 report_assets/verification.png
 report_pdf/png/
+
+cmake-build-*/
+.idea/

@@ -1,5 +1,6 @@
 #include <cstdint>
 #include <climits>
+#include <algorithm>
 #include <cstdlib>
 
 #include <iostream>
@@ -16,10 +17,10 @@
 
 namespace {
 
-constexpr int32_t default_window_width = 1280;
-constexpr int32_t default_window_height = 720;
+constexpr int32_t default_window_width = 1400;
+constexpr int32_t default_window_height = 900;
 
-constexpr char default_window_title[] = "CG Lab 1 | Icosahedron | Variant 11";
+constexpr char default_window_title[] = "CG Lab 2 | Camera and Lighting | Variant 11";
 
 GLFWwindow* glfw_window;
 
@@ -38,8 +39,36 @@ bool parseFrameLimit(int argc, char** argv, int& frames) {
 
 } // namespace
 
-int main() {
+int main(int argc, char** argv) {
 	int status = EXIT_SUCCESS;
+	int frameLimit = 0;
+	bool selfTest = false;
+	std::string screenshotPath;
+	if (!parseFrameLimit(argc, argv, frameLimit)) {
+		std::cerr << "Invalid --frames value\n";
+		return EXIT_FAILURE;
+	}
+	for (int i = 1; i < argc; ++i) {
+		const std::string argument = argv[i];
+		if (argument == "--frames") { ++i; continue; }
+		if (argument == "--self-test") { selfTest = true; if (!frameLimit) frameLimit = 70; continue; }
+		if (argument == "--screenshot" && i + 1 < argc) {
+			screenshotPath = argv[++i];
+			if (!frameLimit) frameLimit = 5;
+			continue;
+		}
+		if (argument == "--demo" && i + 1 < argc) {
+			const std::string name = argv[++i];
+			if (name != "all" && name != "directional" && name != "points" && name != "spots" && name != "empty") return EXIT_FAILURE;
+			application::setDemo(argv[i]);
+			continue;
+		}
+		std::cerr << "Usage: vulkan-starter-app [--frames N] [--demo all|directional|points|spots|empty] [--self-test] [--screenshot frame.ppm]\n";
+		return EXIT_FAILURE;
+	}
+	if (!screenshotPath.empty()) frameLimit = std::max(frameLimit,3);
+	if (selfTest) frameLimit = std::max(frameLimit,70);
+	int frameCount = 0;
 
 	if (!glfwInit()) {
 		std::cerr << "Failed to initialize GLFW\n";
@@ -94,12 +123,18 @@ int main() {
 		ImGui_ImplGlfw_NewFrame();
 
 		ImGui::NewFrame();
+		if (selfTest) application::verificationStep(frameCount);
 		application::update(time);
 		ImGui::Render();
 
 		graphics::internal::FrameData fd = graphics::internal::prepare();
 		application::render(fd);
+		if (!application::healthy()) { status = EXIT_FAILURE; break; }
+		if (!screenshotPath.empty() && frameCount == 2) graphics::internal::requestScreenshot(screenshotPath.c_str());
 		graphics::internal::submitAndPresent();
+		if (graphics::internal::hasFatalError()) { status = EXIT_FAILURE; break; }
+		++frameCount;
+		if (frameLimit && frameCount >= frameLimit) break;
 	}
 
 	application::shutdown();
@@ -114,5 +149,6 @@ err_imgui_init:
 err_null_window:
 	glfwTerminate();
 
-	return 0;
+	if (graphics::internal::validationErrorCount()) status = EXIT_FAILURE;
+	return status;
 }

@@ -1,76 +1,109 @@
-# Лабораторная работа №1 — основы 3D-графики
+# Лабораторная №2 — камера и освещение
 
-Вариант 11: правильный икосаэдр. Реализация выполнена на C++20 с Vulkan, GLFW и ImGui.
+Вариант 11: правильный икосаэдр. C++20, Vulkan, GLFW, ImGui. Проект продолжает ЛР1, сохранённую тегом `lab1`.
 
-## Что реализовано
+## Требования на оценку 5
 
-- индексированный правильный икосаэдр: 12 вершин, 20 треугольных граней, 30 рёбер;
-- один общий vertex/index buffer для двух объектов;
-- два независимых object `VkDescriptorSet` и UBO с отдельными model matrix и цветом;
-- `std140`-совместимые структуры `GlobalUniforms` и `ObjectUniforms`;
-- перспективная Vulkan-проекция с depth range `0..1` и Y-инверсией;
-- глубинный тест и back-face culling;
-- процедурный цвет вершины от её локальной позиции; выбранный цвет из `ColorEdit3` умножается на этот цвет;
-- интерактивное управление переносом, поворотом, масштабом, цветом и параметрами траектории;
-- два режима сложной анимации: Lissajous и epicyclic, Play/Pause, скорость, радиус, амплитуда, частота, фаза и Reset;
-- CPU-тесты геометрии, матриц, проекции, топологии и часов анимации.
+Базовая часть: управляемая камера (позиция, поворот, FOV), направленный источник, ambient и материал Блинна–Фонга. Нормали генерируются процедурно и передаются как атрибуты вершин. Освещение вычисляется во фрагментном шейдере.
 
-## Зависимости macOS Apple Silicon
+| Дополнительное задание | Реализация |
+| --- | --- |
+| Разделение данных сцены и модели | set 0: scene UBO и два SSBO. set 1: матрицы и материал каждого объекта |
+| Массив точечных источников | Runtime-массив SSBO, затухание 1/r², добавление, удаление и настройка в ImGui |
+| Массив прожекторов | Runtime-массив SSBO, 1/r², направление, внутренний и внешний полууглы, мягкий край |
+| Визуализация источников | Кубы цвета источника, внешний белый и внутренний цветной конусы, показ/скрытие, отдельные шейдеры постоянного цвета |
 
-Установите Vulkan loader/headers, MoltenVK, validation layers, `glslc`, CMake, Ninja и GLFW. Например, через Homebrew:
+На сцене два экземпляра икосаэдра и пол для наблюдения световых пятен. Доступны плоские и сглаженные нормали, две проекции и анимация объектов и источников. Тени в этой работе не рассчитываются.
 
-```sh
-brew install vulkan-headers vulkan-loader vulkan-tools \
-  vulkan-validationlayers shaderc glfw ninja
-```
+## Сборка
 
-Проверка:
+Требуются CMake, компилятор C++20, Vulkan SDK/loader, драйвер Vulkan и `glslc`. CMake загружает GLFW, vk-bootstrap, VMA и ImGui через FetchContent.
+
+На macOS Apple Silicon используются MoltenVK и Homebrew:
 
 ```sh
-which glslc
-which vulkaninfo
-vulkaninfo --summary
+brew install cmake ninja vulkan-headers vulkan-loader vulkan-tools \
+  vulkan-validationlayers molten-vk shaderc
 ```
 
-`vulkaninfo` должен показывать физическое устройство Apple через MoltenVK и `VK_LAYER_KHRONOS_validation`.
-
-## Сборка и запуск
-
-Команды выполняются из корня репозитория:
+Из корня репозитория:
 
 ```sh
 cmake --preset debug -DBUILD_TESTING=ON
 cmake --build build-debug --parallel
-ctest --test-dir build-debug --output-on-failure
-./build-debug/vulkan-starter-app
+./run.sh
 ```
 
-CMake компилирует `shaders/lab.vert` и `shaders/lab.frag` в `build-debug/shaders/*.spv` через `glslc` и передаёт приложению путь к ним через `LAB_SHADER_DIR`.
+`run.sh` настраивает пути MoltenVK и validation layers для Homebrew в `/opt/homebrew`. В другом окружении Vulkan настройте обычным способом. На Linux можно запускать бинарный файл напрямую; на Windows он находится в выбранном CMake build-каталоге.
 
-Для проверки SPIR-V:
+Для Release:
 
 ```sh
-spirv-val build-debug/shaders/lab.vert.spv
-spirv-val build-debug/shaders/lab.frag.spv
+cmake --preset release -DBUILD_TESTING=ON
+cmake --build build-release --parallel
+CG_BUILD_DIR=build-release ./run.sh
+```
+
+При сборке на macOS также появляется `CG Lab 2.app` внутри build-каталога. Это локальное приложение: оно использует установленные библиотеки Vulkan и SPIR-V из соответствующего каталога сборки. Переносить `.app` отдельно на другую машину нельзя.
+
+Существующую сборку CLion можно запустить так:
+
+```sh
+CG_BUILD_DIR=cmake-build-debug ./run.sh
 ```
 
 ## Управление
 
-Панель ImGui находится слева:
+- **Camera**: позиция; pitch/yaw/roll в градусах; FOV; скорость; Perspective/Orthographic; ambient. Правая кнопка мыши над сценой + WASD — полёт, Q/E — вниз/вверх, Shift — ускорение.
+- **Materials**: выбор объекта, перенос, поворот в радианах, масштаб; Albedo, Specular color и Shininess. Vertex color mix включает процедурную раскраску из ЛР1. Smooth vertex normals переключает нормали обоих икосаэдров.
+- **Lights**: направленный свет, списки точечных источников и прожекторов. Add/Remove добавляют и удаляют выбранный источник. Enabled управляет вкладом; Position, Color, Intensity и Ray direction — параметрами. Панель прокручивается, если всё не помещается.
+- **Inner/Outer half-angle**: полууглы прожектора в градусах. При `inner < outer` край мягкий; при равных углах — жёсткий. Ввод ограничен условием `0 ≤ inner ≤ outer ≤ 80°`.
+- **Show light markers / Cones**: показать или скрыть маркеры и линии конусов. Скрытие не отключает освещение.
+- **Play / pause**, **Animation speed**, **Reset time**, **Animate lights**: управление временем и движением. Animate lights действует, когда запущено воспроизведение.
+- **Scene preset**: готовые сцены All lights, Directional only, Point lights only, Spot lights only и Ambient only. Выбор пресета восстанавливает его камеру, материалы и свет.
 
-- **Play/Pause** — запустить или остановить анимацию;
-- **Reset** — сбросить время, позицию и поворот;
-- **Speed** — скорость анимации;
-- **Selected** — выбрать объект A или B;
-- **Tint** — цвет объекта, умножаемый на процедурный цвет вершин;
-- **Translation / Rotation / Scale** — преобразования выбранного объекта;
-- **Trajectory** — Lissajous или epicyclic;
-- **Radius / Amplitude / Frequency / Phase** — параметры траектории.
+При нулевом направлении источник использует направление вниз. В пределах 0,1 единицы от источника закон 1/r² ограничен для защиты от сингулярности. В шейдере нет фиксированного максимума числа источников; размер CPU-списков ограничивается доступным диапазоном SSBO устройства и памятью.
 
-## Структура
+## Проверки
 
-- `source/application.cpp` — Vulkan-ресурсы лабораторной, UBO, descriptor sets, pipeline, ImGui и draw commands;
-- `source/scene_math.hpp` — математика, генерация икосаэдра и анимация;
-- `shaders/lab.vert`, `shaders/lab.frag` — GLSL 450 shaders;
-- `tests/scene_tests.cpp` — автономные CPU-тесты;
-- `source/graphics_internal.cpp` — инфраструктура шаблона: instance, surface, swapchain, render pass, depth, submit/present и ImGui.
+```sh
+ctest --test-dir build-debug --output-on-failure
+./run.sh --self-test
+```
+
+CPU-тесты проверяют топологию икосаэдра, матрицы, анимацию, процедурные нормали, их перпендикулярность при неравномерном масштабе, положение и ориентацию камеры, затухание и геометрию конусов. Проверки `assert` остаются активны и в Release.
+
+`--self-test` выполняет не менее 70 кадров на настоящем GPU: пустые массивы; рост до 33 точечных и 19 прожекторных источников; удаление и повторное заполнение; крайние углы и нулевое направление; неравномерный масштаб, смена нормалей, камеры, проекции и видимости маркеров. Для него нужны рабочие Vulkan-драйвер и оконная сессия. Ошибки Vulkan validation дают ненулевой код завершения.
+
+Дополнительно:
+
+```sh
+spirv-val build-debug/shaders/lab.vert.spv
+spirv-val build-debug/shaders/lab.frag.spv
+spirv-val build-debug/shaders/gizmo.vert.spv
+spirv-val build-debug/shaders/gizmo.frag.spv
+```
+
+При подготовке работы проверены Debug/Release на macOS Apple Silicon через MoltenVK: CPU-тесты 2/2, четыре SPIR-V, GPU-сценарий без ошибок validation. Через интерфейс проверены удаление обоих типов источников до нуля и повторное добавление, скрытие маркеров, смена нормалей, цвета и блеска, проекции и позиции камеры.
+
+## Снимок реального кадра
+
+```sh
+./run.sh --demo spots --screenshot frame.ppm
+```
+
+PPM сохраняется чтением кадра Vulkan с панелью ImGui, затем приложение закрывается. Требуется поддержка transfer source для swapchain. Доступные пресеты CLI: `all`, `directional`, `points`, `spots`, `empty`. Параметр `--frames N` ограничивает длительность запуска; для снимка используются минимум три кадра.
+
+## Файлы
+
+- `source/scene_math.hpp` — базовая математика и икосаэдр ЛР1.
+- `source/lighting_scene.hpp` — камера, нормали, структуры GPU, маркеры и конусы.
+- `source/application.cpp` — сцена, интерфейс, буферы, дескрипторы и команды рисования.
+- `source/graphics_internal.cpp` — инфраструктура Vulkan, синхронизация, validation и показ кадра.
+- `source/frame_capture.hpp` — чтение кадра в PPM.
+- `shaders/lab.*` — геометрия и Блинн–Фонг; `shaders/gizmo.*` — постоянный цвет маркеров.
+- `tests/` — CPU-тесты.
+- `309_Филь_Лаб2.docx` и `report_pdf/309_Филь_Лаб2.pdf` — отчёт.
+- `report_assets/lab2/` — настоящие кадры для отчёта.
+
+Отчёт и исходники ЛР1 сохранены; исходную версию программы можно посмотреть по тегу `lab1`.

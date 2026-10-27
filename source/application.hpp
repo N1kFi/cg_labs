@@ -4,6 +4,9 @@
 
 namespace application {
 
+void setDemo(const char* name);
+bool healthy();
+void verificationStep(int frame);
 bool initialize();
 void shutdown();
 

@@ -105,6 +105,8 @@ endmacro()
 
 compile_shader(lab.vert)
 compile_shader(lab.frag)
+compile_shader(gizmo.vert)
+compile_shader(gizmo.frag)
 
 add_custom_target(shaders DEPENDS ${SHADER_BINARIES})
 add_dependencies(${PROJECT_NAME} shaders)
@@ -116,4 +118,25 @@ if(BUILD_TESTING)
 	target_compile_features(scene_tests PRIVATE cxx_std_20)
 	target_include_directories(scene_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/source)
 	add_test(NAME scene_tests COMMAND scene_tests)
+	add_executable(lighting_tests tests/lighting_tests.cpp)
+	target_compile_features(lighting_tests PRIVATE cxx_std_20)
+	target_include_directories(lighting_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/source)
+	add_test(NAME lighting_tests COMMAND lighting_tests)
+	foreach(TEST_TARGET scene_tests lighting_tests)
+		if(MSVC)
+			target_compile_options(${TEST_TARGET} PRIVATE /UNDEBUG)
+		else()
+			target_compile_options(${TEST_TARGET} PRIVATE -UNDEBUG)
+		endif()
+	endforeach()
+endif()
+
+if(APPLE)
+    set(LAB_APP "${CMAKE_CURRENT_BINARY_DIR}/CG Lab 2.app")
+    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${LAB_APP}/Contents/MacOS"
+        COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:${PROJECT_NAME}>" "${LAB_APP}/Contents/MacOS/vulkan-starter-app"
+        COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_SOURCE_DIR}/macos/Info.plist" "${LAB_APP}/Contents/Info.plist"
+        COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_SOURCE_DIR}/macos/Launcher" "${LAB_APP}/Contents/MacOS/Launcher"
+        VERBATIM)
 endif()

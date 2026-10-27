@@ -1,6 +1,9 @@
 #include "graphics_internal.hpp"
 
 #include <iostream>
+#include <atomic>
+#include <string>
+#include "frame_capture.hpp"
 #include <vector>
 
 #include <vulkan/vulkan.h>
@@ -25,6 +28,14 @@ namespace graphics::internal {
 
 namespace {
 
+std::atomic_uint32_t validation_errors{0};
+VKAPI_ATTR VkBool32 VKAPI_CALL validationCallback(VkDebugUtilsMessageSeverityFlagBitsEXT severity,
+    VkDebugUtilsMessageTypeFlagsEXT, const VkDebugUtilsMessengerCallbackDataEXT* data, void*) {
+    if (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) ++validation_errors;
+    std::cerr << ((severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) ? "[Vulkan ERROR] " : "[Vulkan WARNING] ")
+              << data->pMessage << '\n';
+    return VK_FALSE;
+}
 VkInstance vk_instance = VK_NULL_HANDLE;
 VkDebugUtilsMessengerEXT vk_debug_messenger = VK_NULL_HANDLE;
 uint32_t vk_api_version = VK_MAKE_VERSION(1, 0, 0);
@@ -39,6 +50,8 @@ uint32_t vk_swapchain_resize_width = 0;
 uint32_t vk_swapchain_resize_height = 0;
 bool vk_swapchain_resize_require = false;
 bool vk_fatal_error = false;
+bool vk_capture_supported = false;
+std::string capture_path;
 bool vk_imgui_initialized = false;
 
 VkFormat vk_depth_buffer_format = VK_FORMAT_UNDEFINED;
@@ -335,6 +348,7 @@ bool rebuildSwapchain(uint32_t width, uint32_t height) {
 	                   .use_default_format_selection()
 	                   .set_desired_present_mode(VK_PRESENT_MODE_FIFO_KHR)
 	                   .use_default_image_usage_flags()
+                       .add_image_usage_flags(vk_capture_supported ? VK_IMAGE_USAGE_TRANSFER_SRC_BIT : 0)
 	                   .set_old_swapchain(vk_swapchain)
 	                   .build();
 	if (!sb_result) {
@@ -424,14 +438,16 @@ bool rebuildSwapchain(uint32_t width, uint32_t height) {
 
 Context context;
 
+std::uint32_t validationErrorCount() { return validation_errors.load(); }
+
 bool initialize(GLFWwindow* const window) {
 	// The app links Vulkan::Vulkan; pass its loader entry point directly so
 	// vk-bootstrap does not depend on DYLD_LIBRARY_PATH on Homebrew macOS.
 	vkb::InstanceBuilder ib(vkGetInstanceProcAddr);
-	auto ibr = ib.set_app_name("CG Lab 1 | Icosahedron | Variant 11")
+	auto ibr = ib.set_app_name("CG Lab 2 | Camera and Lighting | Variant 11")
 	              .require_api_version(VK_MAKE_VERSION(1, 1, 0))
 	              .request_validation_layers()
-	              .use_default_debug_messenger()
+	              .set_debug_callback(validationCallback)
 	              .build();
 	if (!ibr) {
 		std::cerr << "Failed to create Vulkan instance: " << ibr.error().message() << '\n';
@@ -509,10 +525,14 @@ bool initialize(GLFWwindow* const window) {
 	}
 
 	vkb::SwapchainBuilder sb(vkb_device);
+	VkSurfaceCapabilitiesKHR capabilities{};
+	vkGetPhysicalDeviceSurfaceCapabilitiesKHR(context.physical_device,vk_surface,&capabilities);
+	vk_capture_supported = (capabilities.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_SRC_BIT) != 0;
 
 	auto sb_result = sb.use_default_format_selection()
 					   .set_desired_present_mode(VK_PRESENT_MODE_FIFO_KHR)
 					   .use_default_image_usage_flags()
+                       .add_image_usage_flags(vk_capture_supported ? VK_IMAGE_USAGE_TRANSFER_SRC_BIT : 0)
 					   .build();
 	if (!sb_result) {
 		std::cerr << sb_result.error().message() << '\n';
@@ -782,6 +802,8 @@ FrameData prepare() {
 	return {};
 }
 
+void requestScreenshot(const char* path) { capture_path = path; }
+
 void submitAndPresent() {
 	if (vk_swapchain_current_image == UINT32_MAX || vk_swapchain_current_image >= vk_semaphores_image_finished.size()) {
 		vk_fatal_error = true;
@@ -813,6 +835,12 @@ void submitAndPresent() {
 		return;
 	}
 
+	if (!capture_path.empty()) {
+		if (!vk_capture_supported || !saveFrame(vk_swapchain_images[vk_swapchain_current_image],capture_path.c_str())) {
+			std::cerr << "Failed to capture rendered frame\n"; vk_fatal_error = true;
+		} else std::cout << "Screenshot saved: " << capture_path << '\n';
+		capture_path.clear();
+	}
 	const VkPresentInfoKHR present = {
 		.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
 		.waitSemaphoreCount = 1,
